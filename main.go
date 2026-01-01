@@ -24,14 +24,12 @@ func main() {
 		newWord    string
 		targetPath string
 		workers    int
-		dryRun     bool
 	)
 
 	flag.StringVar(&oldWord, "old", "", "置換対象の単語 (必須)")
 	flag.StringVar(&newWord, "new", "", "置換後の単語 (必須)")
 	flag.StringVar(&targetPath, "path", "", "対象のファイルまたはディレクトリのパス (必須)")
 	flag.IntVar(&workers, "workers", runtime.NumCPU(), "並列処理のワーカー数")
-	flag.BoolVar(&dryRun, "dry-run", false, "実際には置換せず、対象ファイルを表示する")
 	flag.Parse()
 
 	if oldWord == "" || newWord == "" || targetPath == "" {
@@ -62,9 +60,9 @@ func main() {
 		return
 	}
 
-	results := processFiles(files, oldWord, newWord, workers, dryRun)
+	results := processFiles(files, oldWord, newWord, workers)
 
-	printResults(results, dryRun)
+	printResults(results)
 }
 
 func collectFiles(root string) ([]string, error) {
@@ -111,21 +109,19 @@ func isTextFile(path string) bool {
 	return textExtensions[ext]
 }
 
-func processFiles(files []string, oldWord, newWord string, workers int, dryRun bool) []Result {
+func processFiles(files []string, oldWord, newWord string, workers int) []Result {
 	fileChan := make(chan string, len(files))
 	resultChan := make(chan Result, len(files))
 
 	var wg sync.WaitGroup
 
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			for path := range fileChan {
-				result := replaceInFile(path, oldWord, newWord, dryRun)
+				result := replaceInFile(path, oldWord, newWord)
 				resultChan <- result
 			}
-		}()
+		})
 	}
 
 	for _, f := range files {
@@ -134,7 +130,6 @@ func processFiles(files []string, oldWord, newWord string, workers int, dryRun b
 	close(fileChan)
 
 	go func() {
-		wg.Wait()
 		close(resultChan)
 	}()
 
@@ -146,7 +141,7 @@ func processFiles(files []string, oldWord, newWord string, workers int, dryRun b
 	return results
 }
 
-func replaceInFile(path, oldWord, newWord string, dryRun bool) Result {
+func replaceInFile(path, oldWord, newWord string) Result {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return Result{Path: path, Err: err}
@@ -158,10 +153,6 @@ func replaceInFile(path, oldWord, newWord string, dryRun bool) Result {
 	count := bytes.Count(content, oldBytes)
 	if count == 0 {
 		return Result{Path: path, Replacements: 0}
-	}
-
-	if dryRun {
-		return Result{Path: path, Replacements: count}
 	}
 
 	newContent := bytes.ReplaceAll(content, oldBytes, newBytes)
@@ -179,20 +170,12 @@ func replaceInFile(path, oldWord, newWord string, dryRun bool) Result {
 	return Result{Path: path, Replacements: count}
 }
 
-func printResults(results []Result, dryRun bool) {
+func printResults(results []Result) {
 	var (
 		totalFiles        int32
 		totalReplacements int32
 		errorCount        int32
 	)
-
-	fmt.Println()
-	if dryRun {
-		fmt.Println("=== ドライラン結果 ===")
-	} else {
-		fmt.Println("=== 置換結果 ===")
-	}
-	fmt.Println()
 
 	for _, r := range results {
 		if r.Err != nil {
@@ -204,11 +187,7 @@ func printResults(results []Result, dryRun bool) {
 		if r.Replacements > 0 {
 			atomic.AddInt32(&totalFiles, 1)
 			atomic.AddInt32(&totalReplacements, int32(r.Replacements))
-			if dryRun {
-				fmt.Printf("  [対象] %s (%d箇所)\n", r.Path, r.Replacements)
-			} else {
-				fmt.Printf("  [完了] %s (%d箇所置換)\n", r.Path, r.Replacements)
-			}
+			fmt.Printf("  [完了] %s (%d箇所置換)\n", r.Path, r.Replacements)
 		}
 	}
 
