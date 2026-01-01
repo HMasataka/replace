@@ -1,0 +1,84 @@
+version: '3'
+
+vars:
+  BINARY_NAME: replace
+  BUILD_DIR: ./bin
+  MAIN_FILE: main.go
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.MAIN_FILE}}
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  build-all:
+    desc: Build binaries for multiple platforms
+    env:
+      GOOS: linux
+      GOARCH: amd64
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - GOOS=linux GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-linux-amd64 {{.MAIN_FILE}}
+      - GOOS=darwin GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-amd64 {{.MAIN_FILE}}
+      - GOOS=darwin GOARCH=arm64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-arm64 {{.MAIN_FILE}}
+      - GOOS=windows GOARCH=amd64 go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-windows-amd64.exe {{.MAIN_FILE}}
+
+  run:
+    desc: "Run the application (usage: task run -- <args>)"
+    cmds:
+      - go run {{.MAIN_FILE}} {{.CLI_ARGS}}
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -f {{.BINARY_NAME}}
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  mod-tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy
+
+  install:
+    desc: Install the binary to GOPATH/bin
+    deps: [build]
+    cmds:
+      - go install {{.MAIN_FILE}}
+
+  dev:
+    desc: Development workflow - build and run
+    cmds:
+      - task: build
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  check:
+    desc: Run all checks (fmt, vet, test)
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
