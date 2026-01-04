@@ -18,7 +18,14 @@ type Result struct {
 	Err          error
 }
 
-func main() {
+type Args struct {
+	OldWord    string
+	NewWord    string
+	TargetPath string
+	Workers    int
+}
+
+func parseArgs() *Args {
 	var (
 		oldWord    string
 		newWord    string
@@ -26,33 +33,54 @@ func main() {
 		workers    int
 	)
 
-	flag.StringVar(&oldWord, "old", "", "置換対象の単語 (必須)")
-	flag.StringVar(&newWord, "new", "", "置換後の単語 (必須)")
 	flag.StringVar(&targetPath, "path", "", "対象のファイルまたはディレクトリのパス (必須)")
+	flag.StringVar(&oldWord, "old", "", "置換前の単語 (必須)")
+	flag.StringVar(&newWord, "new", "", "置換後の単語 (必須)")
 	flag.IntVar(&workers, "workers", runtime.NumCPU(), "並列処理のワーカー数")
 	flag.Parse()
 
+	// 位置引数での指定を許可する
+	// フラグ指定が優先され、未指定の値のみ位置引数から補完する。
+	args := flag.Args()
+	if oldWord == "" && len(args) >= 1 {
+		oldWord = args[0]
+	}
+	if newWord == "" && len(args) >= 2 {
+		newWord = args[1]
+	}
+
 	if oldWord == "" || newWord == "" || targetPath == "" {
-		fmt.Fprintln(os.Stderr, "エラー: -old, -new, -path は必須です")
+		fmt.Fprintln(os.Stderr, "エラー: -old, -new, -path もしくは位置引数 <old> <new> <path> が必要です")
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	info, err := os.Stat(targetPath)
+	return &Args{
+		OldWord:    oldWord,
+		NewWord:    newWord,
+		TargetPath: targetPath,
+		Workers:    workers,
+	}
+}
+
+func main() {
+	args := parseArgs()
+
+	info, err := os.Stat(args.TargetPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "エラー: パスが見つかりません: %s\n", targetPath)
+		fmt.Fprintf(os.Stderr, "エラー: パスが見つかりません: %s\n", args.TargetPath)
 		os.Exit(1)
 	}
 
 	var files []string
 	if info.IsDir() {
-		files, err = collectFiles(targetPath)
+		files, err = collectFiles(args.TargetPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "エラー: ディレクトリの走査に失敗しました: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		files = []string{targetPath}
+		files = []string{args.TargetPath}
 	}
 
 	if len(files) == 0 {
@@ -60,7 +88,7 @@ func main() {
 		return
 	}
 
-	results := processFiles(files, oldWord, newWord, workers)
+	results := processFiles(files, args.OldWord, args.NewWord, args.Workers)
 
 	printResults(results)
 }
