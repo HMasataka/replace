@@ -130,6 +130,7 @@ func processFiles(files []string, oldWord, newWord string, workers int) []Result
 	close(fileChan)
 
 	go func() {
+		wg.Wait()
 		close(resultChan)
 	}()
 
